@@ -27,6 +27,11 @@ describe('Groundwire Provisioning Service', () => {
 
 	beforeEach(() => {
 		env = {
+			// Required secrets
+			VOIP_MS_USERNAME: 'test@voip.ms',
+			VOIP_MS_PASSWORD: 'testpassword',
+			AUTH_TOKEN: 'test-auth-token',
+			// Optional settings
 			CURRENCY: 'CAD',
 			DEBUG: 'false',
 		};
@@ -86,6 +91,16 @@ describe('Groundwire Provisioning Service', () => {
 			expect(response.status).toBe(200);
 			expect(data.status).toBe('healthy');
 		});
+
+		test('should return health even without secrets configured', async () => {
+			const request = new Request('https://example.com/health');
+			// Pass empty env to simulate missing secrets
+			const response = await worker.fetch(request, {});
+			const data = (await response.json()) as { status: string };
+
+			expect(response.status).toBe(200);
+			expect(data.status).toBe('healthy');
+		});
 	});
 
 	// =========================================================================
@@ -94,11 +109,10 @@ describe('Groundwire Provisioning Service', () => {
 
 	describe('User-Agent Validation', () => {
 		test('should reject requests without Groundwire user agent on /balance', async () => {
-			const credentials = btoa('user@email.com:password');
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Mozilla/5.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -110,12 +124,11 @@ describe('Groundwire Provisioning Service', () => {
 			expect(data.message).toBe('Unauthorized');
 		});
 
-		test('should accept requests with Groundwire user agent', async () => {
-			const credentials = btoa('user@email.com:password');
+		test('should accept requests with Groundwire user agent and Bearer token', async () => {
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -142,11 +155,10 @@ describe('Groundwire Provisioning Service', () => {
 		});
 
 		test('should accept CloudSoftphone user agent', async () => {
-			const credentials = btoa('user@email.com:password');
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'CloudSoftphone/1.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -168,11 +180,10 @@ describe('Groundwire Provisioning Service', () => {
 		});
 
 		test('should accept Acrobits user agent', async () => {
-			const credentials = btoa('user@email.com:password');
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Acrobits Softphone/1.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -195,7 +206,10 @@ describe('Groundwire Provisioning Service', () => {
 
 		test('should reject XSS attempts in user agent', async () => {
 			const maliciousRequest = new Request('https://example.com/balance', {
-				headers: { 'User-Agent': 'Groundwire/<script>alert("xss")</script>' },
+				headers: {
+					'User-Agent': 'Groundwire/<script>alert("xss")</script>',
+					Authorization: 'Bearer test-auth-token',
+				},
 			});
 
 			const response = await worker.fetch(maliciousRequest, env);
@@ -207,11 +221,10 @@ describe('Groundwire Provisioning Service', () => {
 		});
 
 		test('should accept real Groundwire user agent with build info', async () => {
-			const credentials = btoa('user@email.com:password');
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Groundwire/25.2.34 (build 2335157; iOS 18.6.2; arm64-neon)',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -238,19 +251,19 @@ describe('Groundwire Provisioning Service', () => {
 	// =========================================================================
 
 	describe('Balance Endpoint', () => {
-		test('should return balance with Basic Auth', async () => {
-			const credentials = btoa('api_user@email.com:api_password');
+		test('should return balance with Bearer token', async () => {
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
 			globalThis.fetch = async (url: RequestInfo | URL) => {
 				const urlStr = url.toString();
 				if (urlStr.includes('voip.ms')) {
-					expect(urlStr).toContain('api_username=api_user%40email.com');
+					// Verify it uses the stored credentials
+					expect(urlStr).toContain('api_username=test%40voip.ms');
 					return new Response(
 						JSON.stringify({
 							status: 'success',
@@ -271,7 +284,7 @@ describe('Groundwire Provisioning Service', () => {
 			expect(data.timestamp).toBeDefined();
 		});
 
-		test('should reject balance request without credentials', async () => {
+		test('should reject balance request without Bearer token', async () => {
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
@@ -282,13 +295,24 @@ describe('Groundwire Provisioning Service', () => {
 			expect(response.status).toBe(401);
 		});
 
+		test('should reject balance request with invalid token', async () => {
+			const request = new Request('https://example.com/balance', {
+				headers: {
+					'User-Agent': 'Groundwire/1.0',
+					Authorization: 'Bearer wrong-token',
+				},
+			});
+
+			const response = await worker.fetch(request, env);
+			expect(response.status).toBe(401);
+		});
+
 		test('should reject POST method on balance endpoint', async () => {
-			const credentials = btoa('user@email.com:password');
 			const request = new Request('https://example.com/balance', {
 				method: 'POST',
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -300,11 +324,10 @@ describe('Groundwire Provisioning Service', () => {
 		});
 
 		test('should handle VoIP API errors gracefully', async () => {
-			const credentials = btoa('user@email.com:password');
 			const request = new Request('https://example.com/balance', {
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
-					Authorization: `Basic ${credentials}`,
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -331,9 +354,9 @@ describe('Groundwire Provisioning Service', () => {
 	// =========================================================================
 
 	describe('Provisioning Endpoint', () => {
-		test('should reject provisioning without credentials', async () => {
-			const request = new Request('https://example.com/provision', {
-				method: 'POST',
+		test('should reject provisioning without Bearer token', async () => {
+			const request = new Request('https://example.com/provision/1', {
+				method: 'GET',
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
 				},
@@ -341,14 +364,14 @@ describe('Groundwire Provisioning Service', () => {
 
 			const response = await worker.fetch(request, env);
 			expect(response.status).toBe(401);
-			expect(response.headers.get('content-type')).toContain('application/xml');
 		});
 
-		test('should accept GET method for re-provisioning', async () => {
-			const request = new Request('https://example.com/provision?username=test&password=test', {
+		test('should accept GET method for provisioning with account index', async () => {
+			const request = new Request('https://example.com/provision/1', {
 				method: 'GET',
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
@@ -412,16 +435,21 @@ describe('Groundwire Provisioning Service', () => {
 			const response = await worker.fetch(request, env);
 			expect(response.status).toBe(200);
 			expect(response.headers.get('content-type')).toContain('application/xml');
+
+			const xml = await response.text();
+			expect(xml).toContain('<account>');
+			expect(xml).toContain('<username>12345_test</username>');
+			expect(xml).toContain('<host>atlanta.voip.ms</host>');
+			expect(xml).toContain('/provision/1');
 		});
 
-		test('should accept POST method for initial provisioning', async () => {
-			const request = new Request('https://example.com/provision', {
+		test('should accept POST method for provisioning', async () => {
+			const request = new Request('https://example.com/provision/1', {
 				method: 'POST',
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
-					'Content-Type': 'application/x-www-form-urlencoded',
+					Authorization: 'Bearer test-auth-token',
 				},
-				body: 'username=test@email.com&password=apipassword',
 			});
 
 			globalThis.fetch = async (url: RequestInfo | URL) => {
@@ -482,16 +510,132 @@ describe('Groundwire Provisioning Service', () => {
 			expect(xml).toContain('<host>atlanta.voip.ms</host>');
 		});
 
+		test('should return error for invalid account index', async () => {
+			const request = new Request('https://example.com/provision/99', {
+				method: 'GET',
+				headers: {
+					'User-Agent': 'Groundwire/1.0',
+					Authorization: 'Bearer test-auth-token',
+				},
+			});
+
+			globalThis.fetch = async (url: RequestInfo | URL) => {
+				const urlStr = url.toString();
+				if (urlStr.includes('voip.ms')) {
+					if (urlStr.includes('getSubAccounts')) {
+						return new Response(
+							JSON.stringify({
+								status: 'success',
+								accounts: [{ account: '12345_test', password: 'sippass', pop: 'atlanta' }],
+							}),
+						);
+					}
+					if (urlStr.includes('getServersInfo')) {
+						return new Response(JSON.stringify({ status: 'success', servers: [] }));
+					}
+					if (urlStr.includes('getDIDsInfo')) {
+						return new Response(JSON.stringify({ status: 'success', dids: [] }));
+					}
+				}
+				throw new Error('Unexpected fetch call');
+			};
+
+			const response = await worker.fetch(request, env);
+			expect(response.status).toBe(400);
+
+			const xml = await response.text();
+			expect(xml).toContain('Invalid account index');
+		});
+
+		test('should provision second account with /provision/2', async () => {
+			const request = new Request('https://example.com/provision/2', {
+				method: 'GET',
+				headers: {
+					'User-Agent': 'Groundwire/1.0',
+					Authorization: 'Bearer test-auth-token',
+				},
+			});
+
+			globalThis.fetch = async (url: RequestInfo | URL) => {
+				const urlStr = url.toString();
+				if (urlStr.includes('voip.ms')) {
+					if (urlStr.includes('getSubAccounts')) {
+						return new Response(
+							JSON.stringify({
+								status: 'success',
+								accounts: [
+									{ account: '12345_acc1', password: 'pass1', pop: 'atlanta' },
+									{ account: '12345_acc2', password: 'pass2', pop: 'newyork' },
+								],
+							}),
+						);
+					}
+					if (urlStr.includes('getServersInfo')) {
+						return new Response(
+							JSON.stringify({
+								status: 'success',
+								servers: [
+									{
+										server_name: 'Atlanta',
+										server_shortname: 'ATL',
+										server_hostname: 'atlanta.voip.ms',
+										server_ip: '1.2.3.4',
+										server_country: 'US',
+										server_pop: 'atlanta',
+									},
+									{
+										server_name: 'New York',
+										server_shortname: 'NYC',
+										server_hostname: 'newyork.voip.ms',
+										server_ip: '5.6.7.8',
+										server_country: 'US',
+										server_pop: 'newyork',
+									},
+								],
+							}),
+						);
+					}
+					if (urlStr.includes('getDIDsInfo')) {
+						return new Response(JSON.stringify({ status: 'success', dids: [] }));
+					}
+				}
+				throw new Error('Unexpected fetch call');
+			};
+
+			const response = await worker.fetch(request, env);
+			expect(response.status).toBe(200);
+
+			const xml = await response.text();
+			expect(xml).toContain('<username>12345_acc2</username>');
+			expect(xml).toContain('<password>pass2</password>');
+			expect(xml).toContain('<host>newyork.voip.ms</host>');
+			expect(xml).toContain('/provision/2');
+		});
+
 		test('should reject PUT method on provision endpoint', async () => {
-			const request = new Request('https://example.com/provision', {
+			const request = new Request('https://example.com/provision/1', {
 				method: 'PUT',
 				headers: {
 					'User-Agent': 'Groundwire/1.0',
+					Authorization: 'Bearer test-auth-token',
 				},
 			});
 
 			const response = await worker.fetch(request, env);
 			expect(response.status).toBe(405);
+		});
+
+		test('should return 404 for /provision without index', async () => {
+			const request = new Request('https://example.com/provision', {
+				method: 'GET',
+				headers: {
+					'User-Agent': 'Groundwire/1.0',
+					Authorization: 'Bearer test-auth-token',
+				},
+			});
+
+			const response = await worker.fetch(request, env);
+			expect(response.status).toBe(404);
 		});
 	});
 
@@ -655,8 +799,7 @@ describe('Groundwire Provisioning Service', () => {
 				[{ did: '5551234567' }],
 				{
 					workerBaseUrl: 'https://worker.example.com',
-					apiUsername: 'api@user.com',
-					apiPassword: 'apipass',
+					accountIndex: 1,
 				},
 			);
 
@@ -667,13 +810,14 @@ describe('Groundwire Provisioning Service', () => {
 			expect(xml).toContain('<password>sippass</password>');
 			expect(xml).toContain('<host>atlanta.voip.ms</host>');
 			expect(xml).toContain('VoIP.ms - 555-123-4567');
-			expect(xml).toContain('<apiUser>api@user.com</apiUser>');
-			expect(xml).toContain('<apiPass>apipass</apiPass>');
 			expect(xml).toContain('https://worker.example.com/balance');
-			expect(xml).toContain('https://worker.example.com/provision');
+			expect(xml).toContain('https://worker.example.com/provision/1');
+			// Should NOT contain apiUser/apiPass (credentials stored in Cloudflare)
+			expect(xml).not.toContain('<apiUser>');
+			expect(xml).not.toContain('<apiPass>');
 		});
 
-		test('should generate multi-account XML', () => {
+		test('should only provision first account even if multiple provided', () => {
 			const xml = generateAccountXml(
 				[
 					{ account: 'acc1', password: 'pass1', serverHostname: 'atl.voip.ms', serverPop: 'atlanta' },
@@ -682,25 +826,25 @@ describe('Groundwire Provisioning Service', () => {
 				[],
 				{
 					workerBaseUrl: 'https://worker.example.com',
-					apiUsername: 'api@user.com',
-					apiPassword: 'apipass',
+					accountIndex: 1,
 				},
 			);
 
-			expect(xml).toContain('<accounts>');
-			expect(xml).toContain('</accounts>');
-			expect(xml.match(/<account>/g)?.length).toBe(2);
+			// Should only contain one account (Groundwire limitation)
+			expect(xml).not.toContain('<accounts>');
+			expect(xml.match(/<account>/g)?.length).toBe(1);
+			expect(xml).toContain('<username>acc1</username>');
+			expect(xml).not.toContain('<username>acc2</username>');
 		});
 
-		test('should generate empty accounts XML when no sub-accounts', () => {
+		test('should generate error XML when no sub-accounts', () => {
 			const xml = generateAccountXml([], [], {
 				workerBaseUrl: 'https://worker.example.com',
-				apiUsername: 'api@user.com',
-				apiPassword: 'apipass',
+				accountIndex: 1,
 			});
 
-			expect(xml).toContain('<accounts>');
-			expect(xml).toContain('</accounts>');
+			expect(xml).toContain('<error>');
+			expect(xml).toContain('No accounts available');
 			expect(xml).not.toContain('<account>');
 		});
 
@@ -718,14 +862,22 @@ describe('Groundwire Provisioning Service', () => {
 				[],
 				{
 					workerBaseUrl: 'https://worker.example.com',
-					apiUsername: 'api@user.com',
-					apiPassword: 'apipass',
+					accountIndex: 1,
 				},
 			);
 
 			expect(xml).toContain('&lt;script&gt;');
 			expect(xml).toContain('pass&amp;word');
 			expect(xml).toContain('&quot;Test&quot;');
+		});
+
+		test('should include correct account index in re-provision URL', () => {
+			const xml = generateAccountXml([{ account: 'test', password: 'pass', serverHostname: 'test.voip.ms', serverPop: 'test' }], [], {
+				workerBaseUrl: 'https://worker.example.com',
+				accountIndex: 2,
+			});
+
+			expect(xml).toContain('https://worker.example.com/provision/2');
 		});
 	});
 

@@ -10,15 +10,11 @@ CURRENCY = 'CAD'
 # WORKER_BASE_URL = 'https://your-worker.your-subdomain.workers.dev'
 
 # =============================================================================
-# SECURITY SETTINGS
+# RATE LIMITING
 # =============================================================================
 # Rate limiting (per IP)
 RATE_LIMIT_REQUESTS = '10'        # Max requests per window
 RATE_LIMIT_WINDOW_SECONDS = '60'  # Window duration in seconds
-
-# Brute force protection (per credential)
-BRUTE_FORCE_MAX_ATTEMPTS = '5'     # Failed attempts before lockout
-BRUTE_FORCE_LOCKOUT_SECONDS = '900' # Lockout duration (15 minutes)
 
 # =============================================================================
 # DEBUG
@@ -33,9 +29,23 @@ enabled = true
 mode = "smart"
 
 # =============================================================================
-# KV NAMESPACES (Optional but recommended for security features)
+# REQUIRED SECRETS
 # =============================================================================
-# To enable rate limiting and brute force protection, create a KV namespace:
+# You MUST set these secrets before deploying:
+#
+#   wrangler secret put VOIP_MS_USERNAME
+#   wrangler secret put VOIP_MS_PASSWORD
+#   wrangler secret put AUTH_TOKEN
+#
+# VOIP_MS_USERNAME: Your VoIP.ms API username (email address)
+# VOIP_MS_PASSWORD: Your VoIP.ms API password (from VoIP.ms portal)
+# AUTH_TOKEN: A random token for Groundwire to authenticate with this worker
+#             Generate one with: openssl rand -base64 32
+
+# =============================================================================
+# KV NAMESPACES (Optional)
+# =============================================================================
+# To enable rate limiting, create a KV namespace:
 #   wrangler kv namespace create SECURITY_KV
 # Then uncomment and fill in the ID below:
 #

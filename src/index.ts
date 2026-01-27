@@ -4,6 +4,7 @@ import { debugLog, validateUserAgent, createJsonResponse, createErrorResponse } 
 import { AppError } from './utils/errors.js';
 import { checkRateLimit, getClientIp } from './security/rate-limiter.js';
 import { logRateLimitExceeded } from './security/audit-log.js';
+import { validateBearerAuth } from './security/auth.js';
 import { handleProvision } from './provisioning/handler.js';
 import { handleBalance } from './balance/handler.js';
 
@@ -28,7 +29,7 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 	const url = new URL(request.url);
 	const pathname = url.pathname;
 
-	// Health check - no auth required, any method
+	// Health check - no auth required, works even without env config
 	if (pathname === '/health') {
 		return handleHealth();
 	}
@@ -70,28 +71,47 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 		return null;
 	};
 
+	// Helper to validate Bearer token auth
+	const validateAuth = (): Response | null => {
+		const authHeader = request.headers.get('authorization');
+		if (!validateBearerAuth(authHeader, env.AUTH_TOKEN, debug)) {
+			debugLog('Bearer token validation failed', null, debug);
+			return createErrorResponse('Unauthorized', 401);
+		}
+		return null;
+	};
+
+	// Parse provision route: /provision/1, /provision/2, etc.
+	const provisionMatch = pathname.match(/^\/provision\/(\d+)$/);
+
 	try {
 		// Route to appropriate handler
-		switch (pathname) {
-			case '/provision': {
-				// Provisioning supports GET (re-provision) and POST (initial)
-				if (request.method !== 'GET' && request.method !== 'POST') {
-					return createErrorResponse(`Method ${request.method} not allowed`, 405);
-				}
+		if (provisionMatch && provisionMatch[1]) {
+			const accountIndex = parseInt(provisionMatch[1], 10);
 
-				// User-Agent validation BEFORE rate limiting (don't waste KV on garbage requests)
-				if (!validateUserAgent(userAgent)) {
-					debugLog('User-agent validation failed for provisioning', { userAgent }, debug);
-					return createErrorResponse('Unauthorized', 401);
-				}
-
-				// Rate limit only valid Groundwire requests
-				const rateLimitResponse = await checkRateLimitForRequest();
-				if (rateLimitResponse) return rateLimitResponse;
-
-				return handleProvision({ request, env, debug });
+			// Provisioning supports GET (re-provision) and POST (initial)
+			if (request.method !== 'GET' && request.method !== 'POST') {
+				return createErrorResponse(`Method ${request.method} not allowed`, 405);
 			}
 
+			// User-Agent validation BEFORE rate limiting (don't waste KV on garbage requests)
+			if (!validateUserAgent(userAgent)) {
+				debugLog('User-agent validation failed for provisioning', { userAgent }, debug);
+				return createErrorResponse('Unauthorized', 401);
+			}
+
+			// Validate Bearer token
+			const authResponse = validateAuth();
+			if (authResponse) return authResponse;
+
+			// Rate limit only valid Groundwire requests
+			const rateLimitResponse = await checkRateLimitForRequest();
+			if (rateLimitResponse) return rateLimitResponse;
+
+			return handleProvision({ request, env, debug, accountIndex });
+		}
+
+		switch (pathname) {
 			case '/balance': {
 				// Balance only supports GET
 				if (request.method !== 'GET') {
@@ -104,6 +124,10 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 					return createErrorResponse('Unauthorized', 401);
 				}
 
+				// Validate Bearer token
+				const authResponse = validateAuth();
+				if (authResponse) return authResponse;
+
 				// Rate limit only valid Groundwire requests
 				const rateLimitResponse = await checkRateLimitForRequest();
 				if (rateLimitResponse) return rateLimitResponse;
@@ -112,7 +136,7 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 			}
 
 			case '/': {
-				// Root path - redirect to health or show info
+				// Root path - show health info
 				if (request.method !== 'GET') {
 					return createErrorResponse(`Method ${request.method} not allowed`, 405);
 				}
@@ -191,7 +215,7 @@ export {
 	createXmlResponse,
 	createErrorResponse,
 } from './utils/helpers.js';
-export { parseBasicAuth, parseBearerToken, extractCredentials } from './security/auth.js';
+export { parseBasicAuth, parseBearerToken, validateBearerAuth, extractCredentials } from './security/auth.js';
 export { checkRateLimit, getClientIp } from './security/rate-limiter.js';
 export { isAccountLocked, recordFailedAttempt, clearFailedAttempts } from './security/brute-force.js';
 export { VoipMsApiClient, createVoipMsClient } from './api/voipms.js';

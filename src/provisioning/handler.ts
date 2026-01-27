@@ -1,8 +1,6 @@
 import { createVoipMsClient } from '../api/voipms.js';
 import { generateAccountXml, generateErrorXml } from './xml-generator.js';
-import { extractCredentials } from '../security/auth.js';
-import { isAccountLocked, recordFailedAttempt, clearFailedAttempts } from '../security/brute-force.js';
-import { logAuthAttempt, logAccountLocked, logProvisionRequest } from '../security/audit-log.js';
+import { logProvisionRequest } from '../security/audit-log.js';
 import { getClientIp } from '../security/rate-limiter.js';
 import { debugLog, createXmlResponse } from '../utils/helpers.js';
 import type { Env } from '../types.js';
@@ -15,16 +13,16 @@ export interface ProvisioningContext {
 	request: Request;
 	env: Env;
 	debug: boolean;
+	accountIndex: number;
 }
 
 /**
- * Handle provisioning requests (both initial and re-provisioning)
- *
- * Initial provisioning: User enters VoIP.ms API credentials in Groundwire
- * Re-provisioning: Groundwire uses stored credentials to refresh config
+ * Handle provisioning requests
+ * Uses VoIP.ms credentials stored in Cloudflare secrets
+ * Account index (1-based) selects which sub-account to provision
  */
 export async function handleProvision(ctx: ProvisioningContext): Promise<Response> {
-	const { request, env, debug } = ctx;
+	const { request, env, debug, accountIndex } = ctx;
 	const clientIp = getClientIp(request);
 	const userAgent = request.headers.get('user-agent');
 
@@ -34,79 +32,78 @@ export async function handleProvision(ctx: ProvisioningContext): Promise<Respons
 			method: request.method,
 			clientIp,
 			userAgent,
+			accountIndex,
 		},
 		debug,
 	);
 
-	// Extract credentials from request
-	const credentials = await extractCredentials(request, debug);
-
-	if (!credentials) {
-		debugLog('No credentials provided', null, debug);
-		logAuthAttempt(clientIp, userAgent, '/provision', undefined, false);
-		return createXmlResponse(generateErrorXml('Authentication required. Provide VoIP.ms API credentials.'), 401);
-	}
-
-	const { username, password } = credentials;
-
-	// Check brute force protection
-	const isLocked = await isAccountLocked(username, env.SECURITY_KV, undefined, debug);
-	if (isLocked) {
-		logAccountLocked(clientIp, userAgent, '/provision', username);
-		return createXmlResponse(generateErrorXml('Account temporarily locked due to too many failed attempts.'), 429);
-	}
-
-	// Validate credentials against VoIP.ms API
-	const apiClient = createVoipMsClient(username, password, debug);
+	// Use stored VoIP.ms credentials
+	const apiClient = createVoipMsClient(env.VOIP_MS_USERNAME, env.VOIP_MS_PASSWORD, debug);
 
 	try {
-		// Try to fetch provisioning data - this validates credentials
+		// Fetch provisioning data from VoIP.ms
 		const provisioningData = await apiClient.getProvisioningData();
 
-		// Clear any failed attempts on successful auth
-		await clearFailedAttempts(username, env.SECURITY_KV, debug);
+		debugLog(
+			'Provisioning data fetched',
+			{
+				subAccountCount: provisioningData.subAccounts.length,
+				didCount: provisioningData.dids.length,
+				requestedIndex: accountIndex,
+			},
+			debug,
+		);
 
-		// Log successful auth
-		logAuthAttempt(clientIp, userAgent, '/provision', username, true);
+		// Validate account index (1-based)
+		if (accountIndex < 1 || accountIndex > provisioningData.subAccounts.length) {
+			debugLog(
+				'Invalid account index',
+				{
+					requestedIndex: accountIndex,
+					availableAccounts: provisioningData.subAccounts.length,
+				},
+				debug,
+			);
+			return createXmlResponse(
+				generateErrorXml(`Invalid account index. Available accounts: 1-${provisioningData.subAccounts.length}`),
+				400,
+			);
+		}
+
+		// Select the requested sub-account (convert to 0-based index)
+		const selectedAccount = provisioningData.subAccounts[accountIndex - 1];
+
+		// This should never happen after the bounds check, but TypeScript needs assurance
+		if (!selectedAccount) {
+			return createXmlResponse(generateErrorXml('Account not found'), 404);
+		}
 
 		// Generate the worker base URL
 		const workerBaseUrl = env.WORKER_BASE_URL || `https://${request.headers.get('host')}`;
 
-		// Generate Account XML
-		const xml = generateAccountXml(provisioningData.subAccounts, provisioningData.dids, {
+		// Generate Account XML for the single selected account
+		const xml = generateAccountXml([selectedAccount], provisioningData.dids, {
 			workerBaseUrl,
-			apiUsername: username,
-			apiPassword: password,
+			accountIndex,
 		});
 
 		// Log provisioning request
-		logProvisionRequest(clientIp, userAgent, username, provisioningData.subAccounts.length);
+		logProvisionRequest(clientIp, userAgent, selectedAccount.account, 1);
 
 		debugLog(
 			'Provisioning successful',
 			{
-				subAccountCount: provisioningData.subAccounts.length,
-				didCount: provisioningData.dids.length,
+				selectedAccount: selectedAccount.account,
+				serverHostname: selectedAccount.serverHostname,
 			},
 			debug,
 		);
 
 		return createXmlResponse(xml, 200);
 	} catch (error) {
-		// Record failed attempt
-		const isNowLocked = await recordFailedAttempt(username, env.SECURITY_KV, undefined, debug);
-
-		// Log failed auth
-		logAuthAttempt(clientIp, userAgent, '/provision', username, false);
-
-		if (isNowLocked) {
-			logAccountLocked(clientIp, userAgent, '/provision', username);
-		}
-
 		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 		debugLog('Provisioning failed', { error: errorMessage }, debug);
 
-		// Return generic error to avoid leaking information
-		return createXmlResponse(generateErrorXml('Authentication failed. Check your VoIP.ms API credentials.'), 401);
+		return createXmlResponse(generateErrorXml('Failed to fetch account configuration from VoIP.ms'), 502);
 	}
 }

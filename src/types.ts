@@ -6,6 +6,13 @@ import { CONSTANTS } from './utils/constants.js';
 // ============================================================================
 
 export const EnvSchema = z.object({
+	// VoIP.ms API credentials (required - stored as Cloudflare secrets)
+	VOIP_MS_USERNAME: z.string(),
+	VOIP_MS_PASSWORD: z.string(),
+
+	// Auth token for Groundwire to authenticate with this worker (required)
+	AUTH_TOKEN: z.string(),
+
 	// Display settings
 	CURRENCY: z.string().default(CONSTANTS.DEFAULT_CURRENCY),
 

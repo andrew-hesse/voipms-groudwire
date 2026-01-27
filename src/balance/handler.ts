@@ -1,5 +1,4 @@
 import { createVoipMsClient } from '../api/voipms.js';
-import { parseBasicAuth } from '../security/auth.js';
 import { logBalanceRequest } from '../security/audit-log.js';
 import { getClientIp } from '../security/rate-limiter.js';
 import { debugLog, createJsonResponse, createErrorResponse } from '../utils/helpers.js';
@@ -78,38 +77,25 @@ export interface BalanceContext {
 
 /**
  * Handle balance check requests
- * Uses Basic Auth with VoIP.ms API credentials (set by provisioning)
+ * Uses VoIP.ms credentials stored in Cloudflare secrets
+ * Auth is already validated at router level via Bearer token
  */
 export async function handleBalance(ctx: BalanceContext): Promise<Response> {
 	const { request, env, debug } = ctx;
 	const clientIp = getClientIp(request);
 	const userAgent = request.headers.get('user-agent');
-	const authHeader = request.headers.get('authorization');
 
 	debugLog(
 		'Handling balance request',
 		{
 			method: request.method,
 			clientIp,
-			hasAuthHeader: !!authHeader,
 		},
 		debug,
 	);
 
-	// Extract Basic Auth credentials (set by Groundwire from provisioning)
-	const basicAuth = parseBasicAuth(authHeader);
-
-	if (!basicAuth) {
-		debugLog('No Basic Auth credentials provided', null, debug);
-		logBalanceRequest(clientIp, userAgent, false);
-		return createErrorResponse('Authentication required', 401);
-	}
-
-	const { username, password } = basicAuth;
-	debugLog('Using Basic Auth credentials', { usernameLength: username.length }, debug);
-
-	// Check cache first
-	const cacheKey = `balance:${username}`;
+	// Check cache first (keyed by VoIP.ms username)
+	const cacheKey = `balance:${env.VOIP_MS_USERNAME}`;
 	const cachedBalance = await getCachedBalance(cacheKey, env.BALANCE_CACHE, debug);
 
 	if (cachedBalance !== null) {
@@ -123,9 +109,9 @@ export async function handleBalance(ctx: BalanceContext): Promise<Response> {
 		return createJsonResponse(response);
 	}
 
-	// Fetch fresh balance from API
+	// Fetch fresh balance from VoIP.ms API using stored credentials
 	try {
-		const apiClient = createVoipMsClient(username, password, debug);
+		const apiClient = createVoipMsClient(env.VOIP_MS_USERNAME, env.VOIP_MS_PASSWORD, debug);
 		const balance = await apiClient.getBalance();
 
 		// Cache the result
@@ -147,7 +133,6 @@ export async function handleBalance(ctx: BalanceContext): Promise<Response> {
 		debugLog('Balance retrieval failed', { error: errorMessage }, debug);
 		logBalanceRequest(clientIp, userAgent, false);
 
-		// Return generic error
 		return createErrorResponse('Failed to retrieve balance', 502);
 	}
 }

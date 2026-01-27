@@ -9,10 +9,8 @@ import type { SubAccountWithServer, VoipDID } from '../api/schemas.js';
 export interface AccountXmlOptions {
 	/** Base URL of this worker (e.g., "https://groundwire.example.workers.dev") */
 	workerBaseUrl: string;
-	/** VoIP.ms API username (email) */
-	apiUsername: string;
-	/** VoIP.ms API password */
-	apiPassword: string;
+	/** Account index (1-based) for re-provisioning URL */
+	accountIndex: number;
 }
 
 /**
@@ -81,15 +79,13 @@ function generateSingleAccountXml(subAccount: SubAccountWithServer, matchingDid:
 	const escapedUsername = escapeXml(subAccount.account);
 	const escapedPassword = escapeXml(subAccount.password);
 	const escapedHost = escapeXml(subAccount.serverHostname);
-	const escapedApiUser = escapeXml(options.apiUsername);
-	const escapedApiPass = escapeXml(options.apiPassword);
 	const escapedBaseUrl = escapeXml(options.workerBaseUrl);
 
 	// Determine caller ID to display
 	const callerId = matchingDid?.did || subAccount.callerid_number || '';
 	const escapedCallerId = escapeXml(callerId);
 
-	return `  <account>
+	return `<account>
     <!-- Identity -->
     <title>${escapedTitle}</title>
     <username>${escapedUsername}</username>
@@ -110,14 +106,12 @@ function generateSingleAccountXml(subAccount: SubAccountWithServer, matchingDid:
     <!-- Voicemail -->
     <voiceMailNumber>${escapeXml(CONSTANTS.DEFAULT_VOICEMAIL_NUMBER)}</voiceMailNumber>
 
-    <!-- Balance Checker (uses stored API credentials via Basic Auth) -->
+    <!-- Balance Checker (uses Bearer auth token) -->
     <genericBalanceCheckUrl>${escapedBaseUrl}/balance</genericBalanceCheckUrl>
-    <genericBalanceCheckAuthUser>%account[apiUser]%</genericBalanceCheckAuthUser>
-    <genericBalanceCheckAuthPass>%account[apiPass]%</genericBalanceCheckAuthPass>
     <genericBalanceCheckParse>balanceString</genericBalanceCheckParse>
 
-    <!-- Re-provisioning (uses stored API credentials) -->
-    <extProvUrl>${escapedBaseUrl}/provision?username=%account[apiUser]%&amp;password=%account[apiPass]%</extProvUrl>
+    <!-- Re-provisioning (uses Bearer auth token) -->
+    <extProvUrl>${escapedBaseUrl}/provision/${options.accountIndex}</extProvUrl>
     <extProvInterval>${CONSTANTS.PROVISION_CHECK_INTERVAL_SECONDS}</extProvInterval>
 
     <!-- Push Notifications -->
@@ -126,45 +120,33 @@ function generateSingleAccountXml(subAccount: SubAccountWithServer, matchingDid:
     <!-- Security (SRTP) -->
     <sdesIncoming>enabled</sdesIncoming>
     <sdesOutgoing>enabled</sdesOutgoing>
-
-    <!-- Store API credentials for re-use (Groundwire substitutes these) -->
-    <apiUser>${escapedApiUser}</apiUser>
-    <apiPass>${escapedApiPass}</apiPass>
   </account>`;
 }
 
 /**
  * Generate complete Acrobits Account XML for Groundwire provisioning
  *
- * @param subAccounts - Array of sub-accounts with server info
+ * @param subAccounts - Array of sub-accounts with server info (should be single account)
  * @param dids - Array of DIDs (phone numbers)
- * @param options - Configuration options including worker URL and API credentials
+ * @param options - Configuration options including worker URL
  * @returns XML string for Groundwire configuration
  */
 export function generateAccountXml(subAccounts: SubAccountWithServer[], dids: VoipDID[], options: AccountXmlOptions): string {
-	if (subAccounts.length === 0) {
-		// Return an empty accounts response
+	// Only provision single account (Groundwire limitation)
+	const subAccount = subAccounts[0];
+
+	if (!subAccount) {
 		return `<?xml version="1.0" encoding="UTF-8"?>
-<accounts>
-</accounts>`;
+<error>
+  <message>No accounts available</message>
+</error>`;
 	}
 
-	const accountXmls = subAccounts.map((subAccount) => {
-		const matchingDid = findMatchingDid(subAccount, dids);
-		return generateSingleAccountXml(subAccount, matchingDid, options);
-	});
+	const matchingDid = findMatchingDid(subAccount, dids);
+	const accountXml = generateSingleAccountXml(subAccount, matchingDid, options);
 
-	if (accountXmls.length === 1) {
-		// Single account - return without <accounts> wrapper
-		return `<?xml version="1.0" encoding="UTF-8"?>
-${accountXmls[0]}`;
-	}
-
-	// Multiple accounts - wrap in <accounts>
 	return `<?xml version="1.0" encoding="UTF-8"?>
-<accounts>
-${accountXmls.join('\n')}
-</accounts>`;
+${accountXml}`;
 }
 
 /**
