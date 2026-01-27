@@ -87,14 +87,13 @@ After deployment, note your worker URL (e.g., `https://groundwire.your-subdomain
 
    | Field | Value |
    |-------|-------|
-   | **URL** | `https://groundwire.your-subdomain.workers.dev/provision` |
-   | **Custom Headers** | `Authorization: Basic %base64(%username%:%password%)%` |
+   | **URL** | `https://groundwire.your-subdomain.workers.dev/provision?username=%username%&password=%password%` |
    | **Username** | Your VoIP.ms email |
    | **Password** | Your VoIP.ms **API password** (from step 1) |
 
-   > **Why Custom Headers?** Using HTTP Basic Auth via Custom Headers keeps your credentials out of the URL. This prevents them from appearing in server logs, browser history, or any URL-based logging. The `%base64()%` function is a Groundwire feature that encodes your credentials in the standard Basic Auth format.
+   > **Security Note**: Credentials in the URL are protected by HTTPS encryption. The `%username%` and `%password%` placeholders are substituted by Groundwire before sending. This is the standard Acrobits provisioning method.
 
-   Leave other fields (POST data, Content Type, Method, Timeout) at their defaults.
+   Leave other fields (POST data, Content Type, Custom Headers, Method, Timeout) at their defaults.
 
 4. Tap **Done**
 
