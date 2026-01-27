@@ -1,16 +1,14 @@
 # Groundwire Auto-Provisioning for VoIP.ms
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/andrew-hesse/voipms-groudwire-cloudflare-worker)
-
-A Cloudflare Worker that enables **automatic provisioning** of [Groundwire](https://www.acrobits.net/groundwire/) (iOS/Android VoIP app) with your [VoIP.ms](https://voip.ms) account. Enter your VoIP.ms API credentials once, and Groundwire automatically configures all your SIP accounts, servers, and balance checking.
+A Cloudflare Worker that enables **automatic provisioning** of [Groundwire](https://www.acrobits.net/groundwire/) (iOS/Android VoIP app) with your [VoIP.ms](https://voip.ms) account. Deploy once, configure Groundwire with a simple Bearer token, and all your SIP accounts are automatically set up.
 
 ## Features
 
-- **One-time setup**: Enter VoIP.ms API credentials in Groundwire, everything else is automatic
-- **Auto-sync**: New VoIP.ms sub-accounts appear in Groundwire within 24 hours
+- **Secure by design**: VoIP.ms credentials stored in Cloudflare secrets, never transmitted
+- **Simple auth**: Single Bearer token for Groundwire authentication
+- **Multi-account support**: Separate endpoints for each VoIP.ms sub-account (`/provision/1`, `/provision/2`)
 - **Balance checker**: See your VoIP.ms balance directly in Groundwire
-- **Multi-account support**: Configures all your VoIP.ms sub-accounts at once
-- **Secure**: Rate limiting, brute force protection, and audit logging
+- **Auto-sync**: Configuration refreshes every 24 hours
 
 ## Architecture
 
@@ -20,27 +18,22 @@ sequenceDiagram
     participant CF as Cloudflare Worker
     participant VM as voip.ms API
 
-    Note over GW,VM: Initial Provisioning (one-time)
-    GW->>CF: POST /provision (API credentials)
-    CF->>VM: Validate credentials
-    CF->>VM: getSubAccounts
+    Note over CF: VoIP.ms credentials stored as secrets
+
+    Note over GW,VM: Provisioning
+    GW->>CF: GET /provision/1 (Bearer token)
+    CF->>VM: getSubAccounts (using stored creds)
     CF->>VM: getServersInfo
     CF->>VM: getDIDsInfo
     VM-->>CF: Account data
     Note over CF: Generate Account XML
-    CF-->>GW: XML with all SIP accounts configured
+    CF-->>GW: XML with SIP account configured
 
-    Note over GW,VM: Balance Checking (automatic)
-    GW->>CF: GET /balance (Basic Auth)
-    CF->>VM: getBalance
+    Note over GW,VM: Balance Checking
+    GW->>CF: GET /balance (Bearer token)
+    CF->>VM: getBalance (using stored creds)
     VM-->>CF: Balance (12.34)
-    Note over CF: Format with currency
     CF-->>GW: {"balanceString": "CAD 12.34"}
-
-    Note over GW,VM: Re-provisioning (every 24h)
-    GW->>CF: GET /provision (stored credentials)
-    CF->>VM: Fetch latest account data
-    CF-->>GW: Updated XML (includes new sub-accounts!)
 ```
 
 ## Quick Start
@@ -52,15 +45,9 @@ sequenceDiagram
 3. Set an **API Password** (different from your login password)
 4. Set `Enable IP Addresses` to `0.0.0.0` (required for Cloudflare Workers)
 
-> ⚠️ **Security Note**: The API password only grants read access to account info and cannot make calls or spend money.
+> **Security Note**: The API password only grants read access to account info and cannot make calls or spend money.
 
 ### 2. Deploy Cloudflare Worker
-
-**Option A: One-Click Deploy**
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/andrew-hesse/voipms-groudwire-cloudflare-worker)
-
-**Option B: Manual Deploy**
 
 ```bash
 # Clone the repository
@@ -70,106 +57,124 @@ cd voipms-groudwire-cloudflare-worker
 # Install dependencies
 pnpm install
 
-# Configure (edit wrangler.toml)
-# Set CURRENCY to your preferred currency (CAD, USD, etc.)
+# Generate a random auth token
+openssl rand -base64 32
+# Save this token - you'll need it for Groundwire!
+
+# Set required secrets
+wrangler secret put VOIP_MS_USERNAME   # Your VoIP.ms API email
+wrangler secret put VOIP_MS_PASSWORD   # Your VoIP.ms API password
+wrangler secret put AUTH_TOKEN         # The random token you generated
 
 # Deploy
-pnpm wrangler deploy
+pnpm run deploy
 ```
 
-After deployment, note your worker URL (e.g., `https://groundwire.your-subdomain.workers.dev`)
+After deployment, note your worker URL (e.g., `https://voipms-groundwire.your-subdomain.workers.dev`)
 
 ### 3. Configure Groundwire
 
+You need to configure **two things** in Groundwire: External Provisioning and Balance Checker. Both require the Bearer token.
+
+#### External Provisioning
+
 1. Open Groundwire → **Settings** → **Accounts** → **New Account** → **Generic SIP**
 2. Tap **Advanced Settings** → **Web Services** → **External Provisioning**
-3. Fill in the following fields:
+3. Fill in:
 
    | Field | Value |
    |-------|-------|
-   | **URL** | `https://groundwire.your-subdomain.workers.dev/provision?username=%username%&password=%password%` |
-   | **Username** | Your VoIP.ms email |
-   | **Password** | Your VoIP.ms **API password** (from step 1) |
+   | **URL** | `https://your-worker.workers.dev/provision/1` |
+   | **Custom Headers** | `Authorization: Bearer YOUR_AUTH_TOKEN` |
+   | **Method** | GET |
 
-   > **Security Note**: Credentials in the URL are protected by HTTPS encryption. The `%username%` and `%password%` placeholders are substituted by Groundwire before sending. This is the standard Acrobits provisioning method.
+   > For your second VoIP.ms sub-account, use `/provision/2`, etc.
 
-   Leave other fields (POST data, Content Type, Custom Headers, Method, Timeout) at their defaults.
+4. Tap **Done** - Groundwire will provision the SIP account
 
-4. Tap **Done**
+#### Balance Checker
 
-Groundwire will automatically configure all your VoIP.ms sub-accounts!
+The balance checker URL is set automatically during provisioning, but **you must manually add the Authorization header**:
 
-## How It Works
-
-### Provisioning Flow
-
-When you provision Groundwire, the worker:
-
-1. Validates your VoIP.ms API credentials
-2. Fetches all your sub-accounts via `getSubAccounts`
-3. Fetches server information via `getServersInfo`
-4. Fetches your phone numbers via `getDIDsInfo`
-5. Generates [Acrobits Account XML](https://doc.acrobits.net/api/client/account_xml.html) with:
-   - SIP username/password for each sub-account
-   - Correct SIP server based on your configured POP
-   - NAT traversal (ICE/STUN) settings for VoIP.ms
-   - SRTP security enabled
-   - Optimal codec configuration
-   - Balance checker URL with your credentials
-   - Re-provisioning URL (checks every 24 hours)
-
-### Auto-Sync
-
-The generated XML includes `<extProvUrl>` and `<extProvInterval>`, which tells Groundwire to:
-
-- Check for configuration updates every 24 hours
-- Automatically add new sub-accounts you create in VoIP.ms
-- Update server/settings changes
-
-### Balance Checking
-
-The XML configures Groundwire's balance checker to call `/balance` with your stored credentials. Your balance appears in the Groundwire interface:
+1. After provisioning, go to the account settings
+2. Navigate to **Advanced Settings** → **Web Services** → **Balance Checker**
+3. Add **Custom Headers**: `Authorization: Bearer YOUR_AUTH_TOKEN`
 
 ![Balance in Groundwire](pictures/groundwire.jpg)
 
+## How It Works
+
+### Simplified Security Model
+
+Unlike traditional provisioning where credentials are passed with each request, this worker:
+
+1. **Stores VoIP.ms credentials** securely in Cloudflare secrets
+2. **Uses a simple Bearer token** for Groundwire authentication
+3. **Never exposes VoIP.ms credentials** in URLs or responses
+
+This is more secure because:
+- Credentials never leave Cloudflare's infrastructure
+- Bearer token can be rotated without changing VoIP.ms credentials
+- No credential substitution issues with Groundwire placeholders
+
+### Account Selection
+
+Since Groundwire only supports provisioning one account per XML response (Acrobits limitation), each sub-account has its own endpoint:
+
+- `/provision/1` - First sub-account
+- `/provision/2` - Second sub-account
+- etc.
+
+### Auto-Sync
+
+The generated XML includes re-provisioning settings that tell Groundwire to check for updates every 24 hours, automatically picking up server changes or new phone numbers.
+
 ## API Endpoints
 
-| Endpoint     | Method | Auth         | Description            |
-| ------------ | ------ | ------------ | ---------------------- |
-| `/provision` | POST   | Form/Basic   | Initial provisioning   |
-| `/provision` | GET    | Query params | Re-provisioning (auto) |
-| `/balance`   | GET    | Basic Auth   | Balance check          |
-| `/health`    | GET    | None         | Health check           |
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/provision/1` | GET/POST | Bearer token | Provision first sub-account |
+| `/provision/2` | GET/POST | Bearer token | Provision second sub-account |
+| `/balance` | GET | Bearer token | Check account balance |
+| `/health` | GET | None | Health check |
 
 ## Configuration
 
-Edit `wrangler.toml` to customize:
+### Required Secrets
+
+Set these using `wrangler secret put`:
+
+| Secret | Description |
+|--------|-------------|
+| `VOIP_MS_USERNAME` | Your VoIP.ms API email address |
+| `VOIP_MS_PASSWORD` | Your VoIP.ms API password |
+| `AUTH_TOKEN` | Random token for Groundwire auth |
+
+### Optional Settings
+
+Edit `wrangler.toml`:
 
 ```toml
 [vars]
 # Currency shown in balance display
 CURRENCY = 'CAD'
 
-# Rate limiting
-RATE_LIMIT_REQUESTS = '10'        # Max requests per minute
+# Rate limiting (per IP)
+RATE_LIMIT_REQUESTS = '10'
 RATE_LIMIT_WINDOW_SECONDS = '60'
 
-# Brute force protection
-BRUTE_FORCE_MAX_ATTEMPTS = '5'    # Failed logins before lockout
-BRUTE_FORCE_LOCKOUT_SECONDS = '900'  # 15 minute lockout
+# Debug logging
+DEBUG = 'false'
 ```
 
-### Optional: Enable KV for Security Features
-
-For rate limiting and brute force protection to persist across requests:
+### Optional: Enable KV for Rate Limiting
 
 ```bash
-# Create KV namespaces
 wrangler kv namespace create SECURITY_KV
 wrangler kv namespace create BALANCE_CACHE
 ```
 
-Then add the IDs to `wrangler.toml`:
+Add the IDs to `wrangler.toml`:
 
 ```toml
 [[kv_namespaces]]
@@ -197,8 +202,7 @@ src/
 │   └── handler.ts          # Balance endpoint
 ├── security/
 │   ├── rate-limiter.ts     # IP-based rate limiting
-│   ├── brute-force.ts      # Credential lockout
-│   ├── auth.ts             # Authentication parsing
+│   ├── auth.ts             # Bearer token validation
 │   └── audit-log.ts        # Security logging
 └── utils/
     ├── constants.ts        # Shared constants
@@ -209,30 +213,21 @@ src/
 ## Development
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Run locally
-pnpm dev
-
-# Run tests
-pnpm test
-
-# Type check
-pnpm typecheck
-
-# Deploy
-pnpm wrangler deploy
+pnpm install      # Install dependencies
+pnpm dev          # Run locally
+pnpm test         # Run tests
+pnpm typecheck    # Type check
+pnpm run deploy   # Deploy to Cloudflare
 ```
 
 ## Security
 
+- **Credentials in Cloudflare**: VoIP.ms credentials stored as secrets, never transmitted
+- **Bearer Token Auth**: Simple, rotatable authentication for Groundwire
 - **User-Agent Validation**: Only accepts requests from Groundwire/Acrobits clients
-- **Rate Limiting**: 10 requests/minute per IP (configurable)
-- **Brute Force Protection**: 5 failed attempts = 15 minute lockout (configurable)
-- **Audit Logging**: All auth attempts logged (passwords never logged)
+- **Rate Limiting**: Configurable per-IP rate limiting
 - **HTTPS Only**: Cloudflare enforces TLS
-- **Credential Validation**: Every request validates against VoIP.ms API
+- **Audit Logging**: All requests logged (credentials never logged)
 
 ## Troubleshooting
 
@@ -240,19 +235,24 @@ pnpm wrangler deploy
 
 Your Cloudflare Worker's IP isn't allowed in VoIP.ms. Set `Enable IP Addresses` to `0.0.0.0` in your [VoIP.ms API settings](https://voip.ms/m/api.php).
 
-### "Authentication failed" in Groundwire
+### "Unauthorized" error
 
-- Verify you're using your **API password**, not your VoIP.ms login password
-- Check that API is **Enabled** in VoIP.ms settings
+- Verify the Bearer token in Groundwire matches your `AUTH_TOKEN` secret
+- Check the Authorization header format: `Authorization: Bearer YOUR_TOKEN`
 
 ### Balance not showing
 
-- Ensure provisioning completed successfully
-- Check Groundwire's balance checker settings (should be auto-configured)
+- Ensure you added the `Authorization: Bearer` header to the Balance Checker settings
+- The URL is set automatically, but the auth header must be added manually
+
+### Invalid account index
+
+- Check how many sub-accounts you have in VoIP.ms
+- Use `/provision/1` for the first, `/provision/2` for the second, etc.
 
 ### Debug mode
 
-Set `DEBUG = 'true'` in `wrangler.toml` and check Cloudflare Worker logs for detailed request info.
+Set `DEBUG = 'true'` in `wrangler.toml` and check Cloudflare Worker logs.
 
 ## License
 
