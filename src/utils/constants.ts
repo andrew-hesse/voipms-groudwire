@@ -25,6 +25,7 @@ export const CONSTANTS = {
 	// Defaults
 	DEFAULT_CURRENCY: 'USD',
 	DEFAULT_VOICEMAIL_NUMBER: '*97',
+	DEFAULT_SIP_SERVER: 'atlanta1.voip.ms', // Fallback when no POP is configured
 
 	// Caching
 	CACHE_TTL_SECONDS: 30,

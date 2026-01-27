@@ -244,9 +244,22 @@ export class VoipMsApiClient {
 			const pop = account.pop || '';
 			const server = serverMap.get(pop);
 
+			// Determine server hostname with proper fallback
+			let serverHostname: string;
+			if (server?.server_hostname) {
+				serverHostname = server.server_hostname;
+			} else if (pop && pop.length > 0) {
+				serverHostname = `${pop}.voip.ms`;
+			} else {
+				// No POP configured - use default server
+				serverHostname = CONSTANTS.DEFAULT_SIP_SERVER;
+			}
+
+			debugLog('Sub-account server mapping', { account: account.account, pop, serverHostname }, this.debug);
+
 			return {
 				...account,
-				serverHostname: server?.server_hostname || `${pop}.voip.ms`,
+				serverHostname,
 				serverPop: pop,
 			};
 		});
