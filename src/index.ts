@@ -56,17 +56,19 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 		debug,
 	);
 
-	// Rate limiting (applies to all authenticated endpoints)
-	const rateLimitConfig = {
-		maxRequests: env.RATE_LIMIT_REQUESTS,
-		windowSeconds: env.RATE_LIMIT_WINDOW_SECONDS,
+	// Helper to check rate limit (only called for valid Groundwire requests)
+	const checkRateLimitForRequest = async (): Promise<Response | null> => {
+		const rateLimitConfig = {
+			maxRequests: env.RATE_LIMIT_REQUESTS,
+			windowSeconds: env.RATE_LIMIT_WINDOW_SECONDS,
+		};
+		const withinRateLimit = await checkRateLimit(clientIp, env.SECURITY_KV, rateLimitConfig, debug);
+		if (!withinRateLimit) {
+			logRateLimitExceeded(clientIp, userAgent, pathname);
+			return createErrorResponse('Too many requests', 429);
+		}
+		return null;
 	};
-
-	const withinRateLimit = await checkRateLimit(clientIp, env.SECURITY_KV, rateLimitConfig, debug);
-	if (!withinRateLimit) {
-		logRateLimitExceeded(clientIp, userAgent, pathname);
-		return createErrorResponse('Too many requests', 429);
-	}
 
 	try {
 		// Route to appropriate handler
@@ -77,11 +79,15 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 					return createErrorResponse(`Method ${request.method} not allowed`, 405);
 				}
 
-				// User-Agent validation for provisioning (should be Groundwire)
+				// User-Agent validation BEFORE rate limiting (don't waste KV on garbage requests)
 				if (!validateUserAgent(userAgent)) {
 					debugLog('User-agent validation failed for provisioning', { userAgent }, debug);
 					return createErrorResponse('Unauthorized', 401);
 				}
+
+				// Rate limit only valid Groundwire requests
+				const rateLimitResponse = await checkRateLimitForRequest();
+				if (rateLimitResponse) return rateLimitResponse;
 
 				return handleProvision({ request, env, debug });
 			}
@@ -92,11 +98,15 @@ async function handleRequest(request: Request, rawEnv: Record<string, unknown>):
 					return createErrorResponse(`Method ${request.method} not allowed`, 405);
 				}
 
-				// User-Agent validation for balance (should be Groundwire)
+				// User-Agent validation BEFORE rate limiting (don't waste KV on garbage requests)
 				if (!validateUserAgent(userAgent)) {
 					debugLog('User-agent validation failed for balance', { userAgent }, debug);
 					return createErrorResponse('Unauthorized', 401);
 				}
+
+				// Rate limit only valid Groundwire requests
+				const rateLimitResponse = await checkRateLimitForRequest();
+				if (rateLimitResponse) return rateLimitResponse;
 
 				return handleBalance({ request, env, debug });
 			}
