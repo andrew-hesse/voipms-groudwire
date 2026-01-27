@@ -23,7 +23,7 @@ export const CONSTANTS = {
 	WORKER_USER_AGENT: 'Cloudflare-Worker/1.0',
 
 	// Defaults
-	DEFAULT_CURRENCY: 'USD',
+	DEFAULT_CURRENCY: 'CAD',
 	DEFAULT_VOICEMAIL_NUMBER: '*97',
 	DEFAULT_SIP_SERVER: 'ca.voip.ms', // Fallback when no POP is configured
 

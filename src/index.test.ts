@@ -785,7 +785,7 @@ describe('Groundwire Provisioning Service', () => {
 			expect(CONSTANTS.GROUNDWIRE_USER_AGENT_PREFIX).toBe('Groundwire/');
 			expect(CONSTANTS.USER_AGENT_MAX_LENGTH).toBe(200);
 			expect(CONSTANTS.BEARER_PREFIX).toBe('Bearer ');
-			expect(CONSTANTS.DEFAULT_CURRENCY).toBe('USD');
+			expect(CONSTANTS.DEFAULT_CURRENCY).toBe('CAD');
 			expect(CONSTANTS.VOIP_MS_STUN_SERVER).toBe('stun.voip.ms:3478');
 			expect(CONSTANTS.DEFAULT_VOICEMAIL_NUMBER).toBe('*97');
 		});
