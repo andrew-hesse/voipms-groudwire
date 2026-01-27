@@ -103,8 +103,8 @@ export const VoipDIDSchema = z.object({
 	billing_type: z.string().optional(),
 	next_billing: z.string().optional(),
 	order_reference: z.string().optional(),
-	sms_available: z.string().optional(),
-	sms_enabled: z.string().optional(),
+	sms_available: z.union([z.string(), z.number()]).optional(),
+	sms_enabled: z.union([z.string(), z.number()]).optional(),
 });
 
 export type VoipDID = z.infer<typeof VoipDIDSchema>;

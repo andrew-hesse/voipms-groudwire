@@ -1,4 +1,4 @@
-name = "groundwire"
+name = "voipms-groundwire"
 main = "src/index.ts"
 compatibility_date = "2024-11-21"
 
@@ -24,7 +24,7 @@ BRUTE_FORCE_LOCKOUT_SECONDS = '900' # Lockout duration (15 minutes)
 # DEBUG
 # =============================================================================
 # Enable debug logging (optional - set to 'true' for troubleshooting)
-DEBUG = 'false'
+DEBUG = 'true'
 
 [observability.logs]
 enabled = true
