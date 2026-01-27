@@ -87,9 +87,11 @@ After deployment, note your worker URL (e.g., `https://groundwire.your-subdomain
 
    | Field | Value |
    |-------|-------|
-   | **URL** | `https://groundwire.your-subdomain.workers.dev/provision` |
+   | **URL** | `https://groundwire.your-subdomain.workers.dev/provision?username=%username%&password=%password%` |
    | **Username** | Your VoIP.ms email |
    | **Password** | Your VoIP.ms **API password** (from step 1) |
+
+   > **Note**: The `%username%` and `%password%` placeholders are required. Groundwire substitutes your credentials into the URL automatically.
 
    Leave other fields (POST data, Content Type, etc.) at their defaults.
 
