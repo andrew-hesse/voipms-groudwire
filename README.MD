@@ -81,8 +81,8 @@ After deployment, note your worker URL (e.g., `https://groundwire.your-subdomain
 
 ### 3. Configure Groundwire
 
-1. Open Groundwire → **Settings** → **Advanced Settings** → **Web Services**
-2. Tap **External Provisioning**
+1. Open Groundwire → **Settings** → **Accounts** → **New Account** → **Generic SIP**
+2. Tap **Advanced Settings** → **Web Services** → **External Provisioning**
 3. Fill in the following fields:
 
    | Field | Value |
