@@ -81,16 +81,19 @@ After deployment, note your worker URL (e.g., `https://groundwire.your-subdomain
 
 ### 3. Configure Groundwire
 
-1. Open Groundwire → **Settings** → **Accounts** → **Add Account**
-2. Select **Generic SIP** → **External Provisioning**
-3. Enter your provisioning URL:
-   ```
-   https://groundwire.your-subdomain.workers.dev/provision
-   ```
-4. For credentials, enter your **VoIP.ms API credentials**:
-   - **Username**: Your VoIP.ms email
-   - **Password**: Your VoIP.ms **API password** (from step 1)
-5. Tap **Provision**
+1. Open Groundwire → **Settings** → **Advanced Settings** → **Web Services**
+2. Tap **External Provisioning**
+3. Fill in the following fields:
+
+   | Field | Value |
+   |-------|-------|
+   | **URL** | `https://groundwire.your-subdomain.workers.dev/provision` |
+   | **Username** | Your VoIP.ms email |
+   | **Password** | Your VoIP.ms **API password** (from step 1) |
+
+   Leave other fields (POST data, Content Type, etc.) at their defaults.
+
+4. Tap **Done**
 
 Groundwire will automatically configure all your VoIP.ms sub-accounts!
 
