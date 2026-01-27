@@ -37,10 +37,17 @@ export const EnvSchema = z.object({
 		.transform((val) => (val ? parseInt(val, 10) : CONSTANTS.BRUTE_FORCE_LOCKOUT_SECONDS)),
 
 	// KV namespace for security (rate limiting & brute force)
-	SECURITY_KV: z.custom<KVNamespace>().optional(),
+	// Transform invalid bindings to undefined so downstream checks work correctly
+	SECURITY_KV: z
+		.custom<KVNamespace>()
+		.optional()
+		.transform((val) => (val && typeof val.get === 'function' ? val : undefined)),
 
 	// Cache for balance responses (optional)
-	BALANCE_CACHE: z.custom<KVNamespace>().optional(),
+	BALANCE_CACHE: z
+		.custom<KVNamespace>()
+		.optional()
+		.transform((val) => (val && typeof val.get === 'function' ? val : undefined)),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
