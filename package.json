@@ -1,15 +1,35 @@
 {
 	"name": "groundwire",
-	"version": "0.0.0",
+	"version": "3.0.0",
 	"private": true,
+	"type": "module",
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint src/",
+		"lint:fix": "eslint src/ --fix",
+		"format": "prettier --write \"src/**/*.ts\" \"*.{json,md,yml}\"",
+		"format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md,yml}\"",
+		"build": "wrangler deploy --dry-run",
+		"prepare": "husky"
+	},
+	"dependencies": {
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260127.0",
+		"@eslint/js": "^9.39.2",
+		"eslint": "^9.39.2",
+		"globals": "^17.2.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.2.7",
+		"prettier": "^3.8.1",
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.54.0",
 		"vitest": "^2.0.0",
 		"wrangler": "^4.32.0"
 	}

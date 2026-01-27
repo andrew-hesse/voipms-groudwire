@@ -27,8 +27,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
       - name: Run tests
         run: pnpm test
 
       - name: Validate Worker Build
-        run: pnpm wrangler deploy --dry-run
+        run: pnpm build

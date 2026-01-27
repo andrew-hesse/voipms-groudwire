@@ -1,20 +1,52 @@
 name = "groundwire"
-main = "src/index.js"
+main = "src/index.ts"
 compatibility_date = "2024-11-21"
 
 [vars]
-# Currency that will be shown in Groundwire (see the screenshot)
+# Currency that will be shown in Groundwire balance display
 CURRENCY = 'CAD'
-# VOIP username - replace with your actual VOIP.MS email
-VOIP_USERNAME = 'XXXX@XXXX.XXX'
-# Replace with your API (!) password
-# Note that it's not your voip.ms password. See the Readme for activation steps
-VOIP_PASSWORD = 'XXXX'
-# Required auth token between Cloudflare and Groundwire app
-TOKEN = 'XXXXX'
+
+# Worker base URL (optional - auto-detected from request host if not set)
+# WORKER_BASE_URL = 'https://your-worker.your-subdomain.workers.dev'
+
+# =============================================================================
+# SECURITY SETTINGS
+# =============================================================================
+# Rate limiting (per IP)
+RATE_LIMIT_REQUESTS = '10'        # Max requests per window
+RATE_LIMIT_WINDOW_SECONDS = '60'  # Window duration in seconds
+
+# Brute force protection (per credential)
+BRUTE_FORCE_MAX_ATTEMPTS = '5'     # Failed attempts before lockout
+BRUTE_FORCE_LOCKOUT_SECONDS = '900' # Lockout duration (15 minutes)
+
+# =============================================================================
+# DEBUG
+# =============================================================================
+# Enable debug logging (optional - set to 'true' for troubleshooting)
+DEBUG = 'false'
 
 [observability.logs]
 enabled = true
 
 [placement]
 mode = "smart"
+
+# =============================================================================
+# KV NAMESPACES (Optional but recommended for security features)
+# =============================================================================
+# To enable rate limiting and brute force protection, create a KV namespace:
+#   wrangler kv namespace create SECURITY_KV
+# Then uncomment and fill in the ID below:
+#
+# [[kv_namespaces]]
+# binding = "SECURITY_KV"
+# id = "your-security-kv-namespace-id"
+
+# To enable balance caching (reduces API calls), create a KV namespace:
+#   wrangler kv namespace create BALANCE_CACHE
+# Then uncomment and fill in the ID below:
+#
+# [[kv_namespaces]]
+# binding = "BALANCE_CACHE"
+# id = "your-balance-cache-namespace-id"
