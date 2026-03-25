@@ -1,12 +1,6 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
-	"extends": [
-		"config:recommended",
-		":dependencyDashboard",
-		":semanticCommits",
-		":enableVulnerabilityAlerts",
-		":rebaseStalePrs"
-	],
+	"extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits", ":enableVulnerabilityAlerts", ":rebaseStalePrs"],
 	"timezone": "America/New_York",
 	"minimumReleaseAge": "10 days",
 	"prCreation": "not-pending",
