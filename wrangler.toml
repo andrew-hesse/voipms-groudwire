@@ -1,0 +1,10 @@
+name = "voipms-groundwire-balance"
+main = "src/index.ts"
+compatibility_date = "2026-05-14"
+
+[vars]
+CURRENCY = "CAD"
+DEBUG = "false"
+
+[observability.logs]
+enabled = true

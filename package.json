@@ -1,0 +1,34 @@
+{
+	"name": "voipms-groundwire-balance",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@11.1.1",
+	"engines": {
+		"node": ">=22.0.0"
+	},
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint src/",
+		"lint:fix": "eslint src/ --fix",
+		"format": "prettier --write \"src/**/*.ts\" \"*.{json,md,yml}\" \"pnpm-workspace.yaml\" \".github/**/*.yml\"",
+		"format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md,yml}\" \"pnpm-workspace.yaml\" \".github/**/*.yml\"",
+		"build": "wrangler deploy --dry-run"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260424.1",
+		"@eslint/js": "^10.0.1",
+		"eslint": "^10.2.1",
+		"globals": "^17.5.0",
+		"prettier": "^3.8.3",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.59.0",
+		"vitest": "^4.1.5",
+		"wrangler": "^4.85.0"
+	}
+}
